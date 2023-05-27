@@ -334,9 +334,56 @@ t.test('parse(text, reviver)', t => {
     )
 
     t.strictSame(
-        JSON5.parse('{a:{b:2}}', function (k, v) { return (k === 'b' && this.b) ? 'revived' : v }),
+        JSON5.parse('{a:{b:2}}', function (k, v) {
+            return (k === 'b' && this.b) ? 'revived' : v
+        }),
         {a: {b: 'revived'}},
         'sets `this` to the parent value'
+    )
+
+    t.end()
+})
+
+t.test('parse(text, _, healer)', t => {
+    const healPath = ['propertyB']
+    const brokenObject = `{
+"propertyA": "valueA",
+"propertyB": [
+ {"firstkey1":"first value", "second1":"secondV"},
+ {"firstkey2":"first value", "second2":"secondV"},
+ {"firstkey3":"first value", "second3,`
+
+    t.strictSame(
+        JSON5.parse(brokenObject, undefined, (error, stack, root) => {
+            if (error.message.includes('invalid end of input') && stack.length > healPath.length) {
+                const healKey = healPath.at(-1)
+                const healStackPath = stack[healPath.length - 1]
+                if (healStackPath.hasOwnProperty(healKey)) {
+                    if (healStackPath[healKey] === stack[healPath.length]) {
+                        if (Array.isArray(healStackPath[healKey])) {
+                            healStackPath[healKey].pop()
+                        }
+                    }
+                }
+                return root
+            }
+        }),
+        {
+            propertyA: 'valueA',
+            propertyB: [
+                {firstkey1: 'first value', second1: 'secondV'},
+                {firstkey2: 'first value', second2: 'secondV'},
+            ],
+        },
+        'fixes the object'
+    )
+
+    t.throws(
+        () => { JSON5.parse('[1', undefined, () => undefined) },
+        {
+            message: /^JSON5: invalid end of input/,
+        },
+        'throws if healer provided but result not returned'
     )
 
     t.end()
